@@ -6,8 +6,8 @@ from telegram import Bot
 from telegram.error import TelegramError
 
 # Telegram Bot 设置
-TELEGRAM_TOKEN = '你的Bot Token'  # 替换成你的 Bot Token
-CHANNEL_ID = '你的频道 ID'  # 替换成你的频道 ID
+TELEGRAM_TOKEN = '7698800335:AAEeiykr_tJgyZBUxrb6VhXbpH17FmbyAl4'  # 替换为正确的Bot Token
+CHANNEL_ID = '-1002586693525'  # 替换为正确的频道ID
 image_folder = './generated_files'  # 存储图片的文件夹
 
 print("程序初始化中...")
@@ -32,7 +32,8 @@ async def send_message_and_image(bot, chat_id, amount, image_path):
         print(f"文本消息发送成功，消息ID: {message.message_id}")
         
         print(f"正在发送图片：{image_path}")
-        photo_message = await bot.send_photo(chat_id=chat_id, photo=open(image_path, 'rb'))
+        with open(image_path, 'rb') as photo:
+            photo_message = await bot.send_photo(chat_id=chat_id, photo=photo)
         print(f"图片发送成功，消息ID: {photo_message.message_id}")
         print(f"成功发送：{image_path} | 金额：{amount}")
     except TelegramError as e:
