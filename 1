@@ -76,13 +76,9 @@ async def send_scheduled_messages():
     if not os.path.exists(image_folder):
         print(f"警告: 图片文件夹不存在，将创建文件夹")
         os.makedirs(image_folder)
-        
-    image_files = sorted([f for f in os.listdir(image_folder) if f.endswith('.jpg') or f.endswith('.png')])
-    print(f"图片文件总数：{len(image_files)}")
-    if len(image_files) == 0:
-        print("警告: 没有找到任何图片文件")
-    else:
-        print(f"找到的图片文件: {', '.join(image_files[:5])}{'...' if len(image_files) > 5 else ''}")
+    
+    # 记录已处理的文件
+    processed_files = set()
     
     print("开始进入定时发送循环...")
     while True:
@@ -92,38 +88,57 @@ async def send_scheduled_messages():
         print(f"当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 只在10:00到20:00之间发送
-        if 10 <= current_hour < 20 and current_minute % 5 == 0:
-            print(f"当前时间：{current_time.strftime('%H:%M:%S')}，在发送时间范围内，准备发送消息。")
+        if 10 <= current_hour < 20:
+            print(f"当前时间：{current_time.strftime('%H:%M:%S')}，在发送时间范围内，检查是否有需要发送的图片。")
             
             # 重新获取文件列表，以防有新文件添加
-            image_files = sorted([f for f in os.listdir(image_folder) if f.endswith('.jpg') or f.endswith('.png')])
-            print(f"更新后的图片文件总数：{len(image_files)}")
+            image_files = sorted([f for f in os.listdir(image_folder) if (f.endswith('.jpg') or f.endswith('.png')) and f not in processed_files])
+            print(f"未处理的图片文件总数：{len(image_files)}")
             
-            for image_file in image_files:
-                print(f"处理文件: {image_file}")
-                file_time_str, amount = get_image_and_amount(image_file)
-
-                if not file_time_str or not amount:
-                    print(f"跳过文件：{image_file}，因为解析失败。")
-                    continue
-
-                file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(year=current_time.year, month=current_time.month, day=current_time.day)
-                print(f"文件时间: {file_time.strftime('%Y-%m-%d %H:%M:%S')}")
-
-                if current_time >= file_time:
-                    image_path = os.path.join(image_folder, image_file)
-                    print(f"准备发送图片：{image_file}，金额：{amount} Kz，完整路径: {image_path}")
-                    success = await send_message_and_image(bot, CHANNEL_ID, f"{amount} Kz", image_path)
+            if len(image_files) == 0:
+                print("没有新的图片文件需要处理")
+            else:
+                print(f"找到的未处理图片文件: {', '.join(image_files[:5])}{'...' if len(image_files) > 5 else ''}")
+                
+                # 找到当前时间应该发送的图片
+                image_to_send = None
+                for image_file in image_files:
+                    file_time_str, amount = get_image_and_amount(image_file)
+                    
+                    if not file_time_str or not amount:
+                        print(f"跳过文件：{image_file}，因为解析失败。")
+                        processed_files.add(image_file)  # 标记为已处理，避免重复尝试解析
+                        continue
+                    
+                    file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(
+                        year=current_time.year, 
+                        month=current_time.month, 
+                        day=current_time.day
+                    )
+                    print(f"文件时间: {file_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # 如果文件时间已到或已过，且在当前时间的前后5分钟内，则发送
+                    time_diff = abs((current_time - file_time).total_seconds()) / 60
+                    if time_diff <= 5:
+                        image_to_send = image_file
+                        image_amount = amount
+                        break
+                
+                # 如果找到了符合条件的图片，发送它
+                if image_to_send:
+                    image_path = os.path.join(image_folder, image_to_send)
+                    print(f"准备发送图片：{image_to_send}，金额：{image_amount} Kz，完整路径: {image_path}")
+                    success = await send_message_and_image(bot, CHANNEL_ID, f"{image_amount} Kz", image_path)
+                    
                     if success:
-                        print(f"成功发送图片：{image_file}，金额：{amount} Kz")
+                        print(f"成功发送图片：{image_to_send}，金额：{image_amount} Kz")
+                        processed_files.add(image_to_send)  # 标记为已处理
                     else:
-                        print(f"发送图片失败：{image_file}，将在下次尝试")
-                    break  # 发送完一张图片后退出循环
+                        print(f"发送图片失败：{image_to_send}，将在下次尝试")
                 else:
-                    print(f"文件 {image_file} 的时间 {file_time_str} 还未到达，跳过")
-
+                    print("没有找到当前时间需要发送的图片")
         else:
-            print(f"当前时间不在发送范围内或不是5分钟整点，跳过发送。(小时: {current_hour}, 分钟: {current_minute})")
+            print(f"当前时间不在发送范围内，跳过发送。(小时: {current_hour})")
         
         next_check = current_time + timedelta(minutes=1)
         print(f"下次检查时间: {next_check.strftime('%H:%M:%S')}")
