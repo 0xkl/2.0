@@ -29,6 +29,9 @@ async def send_message_and_image(bot, chat_id, amount, image_path):
     except TelegramError as e:
         print(f"发送消息失败：{e}")
         return False
+    except FileNotFoundError:
+        print(f"文件未找到：{image_path}")
+        return False
     except Exception as e:
         print(f"发送过程中发生错误：{e}")
         return False
@@ -59,23 +62,31 @@ async def send_scheduled_messages():
 
         # 只在10:00到20:00之间发送
         if 10 <= current_hour < 20 and current_minute % 5 == 0:
+            print(f"当前时间：{current_time.strftime('%H:%M:%S')}，准备发送消息。")
             for image_file in image_files:
                 file_time_str, amount = get_image_and_amount(image_file)
 
                 if not file_time_str or not amount:
+                    print(f"跳过文件：{image_file}，因为解析失败。")
                     continue
 
                 file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(year=current_time.year, month=current_time.month, day=current_time.day)
 
                 if current_time >= file_time:
                     image_path = os.path.join(image_folder, image_file)
-                    await send_message_and_image(bot, CHANNEL_ID, f"{amount} Kz", image_path)
+                    print(f"准备发送图片：{image_file}，金额：{amount} Kz")
+                    success = await send_message_and_image(bot, CHANNEL_ID, f"{amount} Kz", image_path)
+                    if success:
+                        print(f"成功发送图片：{image_file}，金额：{amount} Kz")
+                    else:
+                        print(f"发送图片失败：{image_file}")
                     break  # 发送完一张图片后退出循环
 
         await asyncio.sleep(60)  # 每分钟检查一次
 
 if __name__ == "__main__":
     try:
+        print("开始发送定时消息...")
         asyncio.run(send_scheduled_messages())
     except Exception as e:
         print(f"出现错误：{e}")
