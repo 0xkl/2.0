@@ -18,138 +18,73 @@ print(f"图片文件夹路径: {image_folder}")
 # 生成发送消息的文本
 def generate_text(amount):
     bonus = float(amount.split()[0]) * 0.30 + float(amount.split()[0])
-    print(f"生成消息文本，金额: {amount}，计算后金额: {bonus:.3f}")
     return f"Basta dar os parabéns ao utilizador por completar uma encomenda no valor de {amount} e retirar {bonus:.3f}🥳"
 
 # 异步发送消息和图片
 async def send_message_and_image(bot, chat_id, amount, image_path):
-    print(f"准备发送消息和图片，金额: {amount}，图片路径: {image_path}")
     text = generate_text(amount)
     
     try:
-        print(f"正在发送文本消息：{text}")
-        message = await bot.send_message(chat_id=chat_id, text=text)
-        print(f"文本消息发送成功，消息ID: {message.message_id}")
-        
-        print(f"正在发送图片：{image_path}")
+        await bot.send_message(chat_id=chat_id, text=text)
         with open(image_path, 'rb') as photo:
-            photo_message = await bot.send_photo(chat_id=chat_id, photo=photo)
-        print(f"图片发送成功，消息ID: {photo_message.message_id}")
-        print(f"成功发送：{image_path} | 金额：{amount}")
+            await bot.send_photo(chat_id=chat_id, photo=photo)
     except TelegramError as e:
         print(f"发送消息失败：{e}")
-        print(f"错误类型: {type(e).__name__}")
         return False
     except FileNotFoundError:
         print(f"文件未找到：{image_path}")
-        print(f"当前工作目录: {os.getcwd()}")
-        print(f"文件夹内容: {os.listdir(os.path.dirname(image_path))}")
         return False
     except Exception as e:
         print(f"发送过程中发生错误：{e}")
-        print(f"错误类型: {type(e).__name__}")
-        print(f"错误详情: {str(e)}")
         return False
     return True
 
 # 获取命名规则的图片文件和金额
 def get_image_and_amount(file_name):
-    print(f"正在解析文件名: {file_name}")
     try:
         time_part, amount_part = file_name.split('_')[:3], file_name.split('_')[3]
         time_str = f"{time_part[0]}:{time_part[1]}:{time_part[2]}"
         amount = amount_part.split()[0]
-        print(f"成功解析文件名，时间: {time_str}，金额: {amount}")
         return time_str, amount
     except Exception as e:
         print(f"解析文件名出错：{file_name} 错误：{e}")
-        print(f"错误类型: {type(e).__name__}")
-        print(f"文件名格式应为: HH_MM_SS_金额 其他信息.jpg")
         return None, None
 
 # 定时发送消息和图片
 async def send_scheduled_messages():
-    print("开始初始化Bot实例...")
     bot = Bot(token=TELEGRAM_TOKEN)
-    print("Bot实例创建成功")
     
-    print(f"正在检查图片文件夹: {image_folder}")
     if not os.path.exists(image_folder):
-        print(f"警告: 图片文件夹不存在，将创建文件夹")
         os.makedirs(image_folder)
     
-    # 记录已处理的文件
-    processed_files = set()
-    
-    print("开始进入定时发送循环...")
-    while True:
-        current_time = datetime.now()
-        current_hour = current_time.hour
-        current_minute = current_time.minute
-        print(f"当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    # 解析文件夹下所有文件名，安排发送任务
+    image_files = sorted([f for f in os.listdir(image_folder) if f.endswith(('.jpg', '.png'))])
+    schedule = []
 
-        # 只在10:00到20:00之间发送
-        if 10 <= current_hour < 20:
-            print(f"当前时间：{current_time.strftime('%H:%M:%S')}，在发送时间范围内，检查是否有需要发送的图片。")
-            
-            # 重新获取文件列表，以防有新文件添加
-            image_files = sorted([f for f in os.listdir(image_folder) if (f.endswith('.jpg') or f.endswith('.png')) and f not in processed_files])
-            print(f"未处理的图片文件总数：{len(image_files)}")
-            
-            if len(image_files) == 0:
-                print("没有新的图片文件需要处理")
-            else:
-                print(f"找到的未处理图片文件: {', '.join(image_files[:5])}{'...' if len(image_files) > 5 else ''}")
-                
-                # 找到当前时间应该发送的图片
-                image_to_send = None
-                for image_file in image_files:
-                    file_time_str, amount = get_image_and_amount(image_file)
-                    
-                    if not file_time_str or not amount:
-                        print(f"跳过文件：{image_file}，因为解析失败。")
-                        processed_files.add(image_file)  # 标记为已处理，避免重复尝试解析
-                        continue
-                    
-                    file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(
-                        year=current_time.year, 
-                        month=current_time.month, 
-                        day=current_time.day
-                    )
-                    print(f"文件时间: {file_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
-                    # 如果文件时间已到或已过，且在当前时间的前后5分钟内，则发送
-                    time_diff = abs((current_time - file_time).total_seconds()) / 60
-                    if time_diff <= 5:
-                        image_to_send = image_file
-                        image_amount = amount
-                        break
-                
-                # 如果找到了符合条件的图片，发送它
-                if image_to_send:
-                    image_path = os.path.join(image_folder, image_to_send)
-                    print(f"准备发送图片：{image_to_send}，金额：{image_amount} Kz，完整路径: {image_path}")
-                    success = await send_message_and_image(bot, CHANNEL_ID, f"{image_amount} Kz", image_path)
-                    
-                    if success:
-                        print(f"成功发送图片：{image_to_send}，金额：{image_amount} Kz")
-                        processed_files.add(image_to_send)  # 标记为已处理
-                    else:
-                        print(f"发送图片失败：{image_to_send}，将在下次尝试")
-                else:
-                    print("没有找到当前时间需要发送的图片")
-        else:
-            print(f"当前时间不在发送范围内，跳过发送。(小时: {current_hour})")
-        
-        next_check = current_time + timedelta(minutes=1)
-        print(f"下次检查时间: {next_check.strftime('%H:%M:%S')}")
-        await asyncio.sleep(60)  # 每分钟检查一次
+    for image_file in image_files:
+        file_time_str, amount = get_image_and_amount(image_file)
+        if file_time_str and amount:
+            file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(
+                year=datetime.now().year,
+                month=datetime.now().month,
+                day=datetime.now().day
+            )
+            schedule.append((file_time, amount, image_file))
+
+    # 按时间排序
+    schedule.sort(key=lambda x: x[0])
+
+    print("开始发送定时消息...")
+    for file_time, amount, image_file in schedule:
+        current_time = datetime.now()
+        wait_time = (file_time - current_time).total_seconds()
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
+        image_path = os.path.join(image_folder, image_file)
+        await send_message_and_image(bot, CHANNEL_ID, amount, image_path)
 
 if __name__ == "__main__":
     try:
-        print("=== 程序启动 ===")
-        print(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("开始发送定时消息...")
         asyncio.run(send_scheduled_messages())
     except KeyboardInterrupt:
         print("\n程序被用户中断")
