@@ -1,0 +1,81 @@
+import os
+import time
+import asyncio
+from datetime import datetime, timedelta
+from telegram import Bot
+from telegram.error import TelegramError
+
+# Telegram Bot 设置
+TELEGRAM_TOKEN = '你的Bot Token'  # 替换成你的 Bot Token
+CHANNEL_ID = '你的频道 ID'  # 替换成你的频道 ID
+image_folder = './generated_files'  # 存储图片的文件夹
+
+# 生成发送消息的文本
+def generate_text(amount):
+    return f"Basta dar os parabéns ao utilizador por completar uma encomenda no valor de {amount} e retirar {(float(amount.split()[0]) * 0.30 + float(amount.split()[0])):.3f}🥳"
+
+# 异步发送消息和图片
+async def send_message_and_image(bot, chat_id, amount, image_path):
+    text = generate_text(amount)
+    
+    try:
+        print(f"正在发送文本消息：{text}")
+        await bot.send_message(chat_id=chat_id, text=text)
+        
+        print(f"正在发送图片：{image_path}")
+        with open(image_path, 'rb') as photo:
+            await bot.send_photo(chat_id=chat_id, photo=photo)
+        print(f"成功发送：{image_path} | 金额：{amount}")
+    except TelegramError as e:
+        print(f"发送消息失败：{e}")
+        return False
+    except Exception as e:
+        print(f"发送过程中发生错误：{e}")
+        return False
+    return True
+
+# 获取命名规则的图片文件和金额
+def get_image_and_amount(file_name):
+    try:
+        time_part, amount_part = file_name.split('_')[:3], file_name.split('_')[3]
+        time_str = f"{time_part[0]}:{time_part[1]}:{time_part[2]}"
+        amount = amount_part.split()[0]
+        return time_str, amount
+    except Exception as e:
+        print(f"解析文件名出错：{file_name} 错误：{e}")
+        return None, None
+
+# 定时发送消息和图片
+async def send_scheduled_messages():
+    bot = Bot(token=TELEGRAM_TOKEN)
+    image_files = sorted([f for f in os.listdir(image_folder) if f.endswith('.jpg') or f.endswith('.png')])
+
+    print(f"图片文件总数：{len(image_files)}")
+    
+    while True:
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        current_minute = current_time.minute
+
+        # 只在10:00到20:00之间发送
+        if 10 <= current_hour < 20 and current_minute % 5 == 0:
+            for image_file in image_files:
+                file_time_str, amount = get_image_and_amount(image_file)
+
+                if not file_time_str or not amount:
+                    continue
+
+                file_time = datetime.strptime(file_time_str, "%H:%M:%S").replace(year=current_time.year, month=current_time.month, day=current_time.day)
+
+                if current_time >= file_time:
+                    image_path = os.path.join(image_folder, image_file)
+                    await send_message_and_image(bot, CHANNEL_ID, f"{amount} Kz", image_path)
+                    break  # 发送完一张图片后退出循环
+
+        await asyncio.sleep(60)  # 每分钟检查一次
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(send_scheduled_messages())
+    except Exception as e:
+        print(f"出现错误：{e}")
